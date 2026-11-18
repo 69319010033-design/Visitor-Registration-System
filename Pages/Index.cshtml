@@ -1,0 +1,180 @@
+@page
+@model VisitorLog.Pages.IndexModel
+@{
+    ViewData["Title"] = "ทะเบียนผู้มาติดต่อ";
+}
+
+<header class="topbar">
+    <div class="topbar__inner">
+        <div class="brand">
+            <h1>ทะเบียนผู้มาติดต่อสำนักงาน</h1>
+            <p>บันทึกเข้า-ออก และดูว่าใครยังอยู่ในสำนักงาน</p>
+        </div>
+        <div class="summary" aria-label="สรุป">
+            <div class="summary__item summary__item--inside">ยังอยู่ในสำนักงาน <strong>@Model.InsideCount</strong></div>
+            <div class="summary__item">ออกแล้ว <strong>@Model.OutCount</strong></div>
+            <div class="summary__item">ยกเลิก <strong>@Model.CancelledCount</strong></div>
+        </div>
+    </div>
+</header>
+
+<main class="layout">
+
+    <!-- ฟอร์มลงทะเบียน -->
+    <section class="panel" aria-labelledby="regTitle">
+        <div class="panel__head"><h2 id="regTitle">ลงทะเบียนผู้มาติดต่อ</h2></div>
+        <div class="panel__body">
+            <form method="post" asp-page-handler="Register">
+                <div class="field">
+                    <label for="fName">ชื่อผู้มาติดต่อ</label>
+                    <input id="fName" name="name" type="text" autocomplete="off" value="@Model.Form.Name" required />
+                </div>
+                <div class="field">
+                    <label for="fOrg">หน่วยงานต้นสังกัด</label>
+                    <input id="fOrg" name="org" type="text" autocomplete="off" value="@Model.Form.Org" required />
+                </div>
+                <div class="field">
+                    <label for="fHost">ผู้ที่ต้องการพบ</label>
+                    <input id="fHost" name="host" type="text" autocomplete="off" value="@Model.Form.Host" required />
+                </div>
+                <div class="field">
+                    <label for="fPurpose">วัตถุประสงค์</label>
+                    <input id="fPurpose" name="purpose" type="text" autocomplete="off" value="@Model.Form.Purpose" required />
+                </div>
+                <div class="field">
+                    <label for="fCheckIn">วันเวลาเข้า</label>
+                    <input id="fCheckIn" name="checkIn" type="datetime-local" value="@Model.CheckInValue" required />
+                    <span class="hint">ค่าเริ่มต้นคือเวลาปัจจุบัน แก้ไขได้</span>
+                </div>
+                @if (Model.RegisterError is not null)
+                {
+                    <p class="error" role="alert">@Model.RegisterError</p>
+                }
+                <div class="actions">
+                    <button type="submit" class="btn btn--primary">บันทึกการเข้า</button>
+                    <a class="btn" href="?tab=@Model.Tab">ล้างฟอร์ม</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- รายการ -->
+    <section class="panel" aria-labelledby="logTitle">
+        <div class="panel__head"><h2 id="logTitle">รายการผู้มาติดต่อ</h2></div>
+
+        <nav class="tabs" aria-label="กรองรายการ">
+            @foreach (var t in Model.Tabs)
+            {
+                <a class="tab" href="?tab=@t.Key" aria-current="@(Model.Tab == t.Key ? "page" : null)">@t.Label <span class="tab__count">@t.Count</span></a>
+            }
+        </nav>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ผู้มาติดต่อ</th>
+                        <th>ผู้ที่ต้องการพบ / วัตถุประสงค์</th>
+                        <th>เข้า</th>
+                        <th>ออก</th>
+                        <th>สถานะ</th>
+                        <th><span class="sr-only">จัดการ</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var v in Model.Rows)
+                {
+                    var status = v.Status;
+                    var pill = status switch
+                    {
+                        VisitStatus.Inside => "inside",
+                        VisitStatus.CheckedOut => "out",
+                        _ => "cancelled"
+                    };
+                    var label = status switch
+                    {
+                        VisitStatus.Inside => "ยังอยู่",
+                        VisitStatus.CheckedOut => "ออกแล้ว",
+                        _ => "ยกเลิก"
+                    };
+
+                    <tr class="@(status == VisitStatus.Cancelled ? "is-cancelled" : "")">
+                        <td>
+                            <div class="cell-title">@v.VisitorName</div>
+                            <div class="cell-sub">@v.Organization</div>
+                        </td>
+                        <td>
+                            <div>@v.HostName</div>
+                            <div class="cell-sub">@v.Purpose</div>
+                        </td>
+                        <td class="time">@IndexModel.Fmt(v.CheckIn)</td>
+                        <td class="time">@IndexModel.Fmt(v.CheckOut)</td>
+                        <td>
+                            <span class="pill pill--@pill">@label</span>
+                            @if (status == VisitStatus.Cancelled)
+                            {
+                                <div class="reason">@v.CancelReason</div>
+                            }
+                        </td>
+                        <td>
+                            <div class="row-actions">
+                                @if (status == VisitStatus.Inside)
+                                {
+                                    <details class="act" open="@Model.IsOpen(v, "out")">
+                                        <summary class="btn btn--sm">บันทึกออก</summary>
+                                        <form method="post" asp-page-handler="CheckOut" class="popover">
+                                            <input type="hidden" name="id" value="@v.Id" />
+                                            <input type="hidden" name="tab" value="@Model.Tab" />
+                                            <div class="field">
+                                                <label for="out-@v.Id">วันเวลาออก</label>
+                                                <input id="out-@v.Id" name="outTime" type="datetime-local"
+                                                       value="@Model.OutValue(v)" min="@IndexModel.IsoLocal(v.CheckIn)" required />
+                                                <span class="hint">ต้องไม่น้อยกว่าเวลาเข้า (เท่ากันได้)</span>
+                                            </div>
+                                            @if (Model.IsOpen(v, "out") && Model.RowError is not null)
+                                            {
+                                                <p class="error" role="alert">@Model.RowError</p>
+                                            }
+                                            <button type="submit" class="btn btn--primary btn--sm">บันทึกออก</button>
+                                        </form>
+                                    </details>
+                                }
+                                @if (status != VisitStatus.Cancelled)
+                                {
+                                    <details class="act" open="@Model.IsOpen(v, "cancel")">
+                                        <summary class="btn btn--sm btn--danger">ยกเลิก</summary>
+                                        <form method="post" asp-page-handler="Cancel" class="popover">
+                                            <input type="hidden" name="id" value="@v.Id" />
+                                            <input type="hidden" name="tab" value="@Model.Tab" />
+                                            <div class="field">
+                                                <label for="reason-@v.Id">เหตุผลการยกเลิก</label>
+                                                <textarea id="reason-@v.Id" name="reason" maxlength="300" required>@Model.ReasonValue(v)</textarea>
+                                                <span class="hint">รายการไม่ถูกลบ แต่ย้ายไปแท็บ "ยกเลิก" พร้อมเหตุผล</span>
+                                            </div>
+                                            @if (Model.IsOpen(v, "cancel") && Model.RowError is not null)
+                                            {
+                                                <p class="error" role="alert">@Model.RowError</p>
+                                            }
+                                            <button type="submit" class="btn btn--primary btn--danger btn--sm">ยืนยันการยกเลิก</button>
+                                        </form>
+                                    </details>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        @if (!Model.Rows.Any())
+        {
+            <p class="empty">@Model.EmptyText</p>
+        }
+    </section>
+
+</main>
+
+<div class="footer">
+    <span>@Model.StorageNote</span>
+</div>
